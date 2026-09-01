@@ -1,0 +1,67 @@
+# 목록을 새로 만들어 GitHub Pages 에 올린다.
+# 서버를 띄우지 않고 깃허브가 정해진 시각에 대신 돌려 주는 방식이라
+# 죽을 일이 없고 비용도 들지 않는다.
+
+name: 채용공고 갱신
+
+on:
+  schedule:
+    # UTC 기준. 한국시간 06시 / 12시 / 18시 / 24시.
+    - cron: "0 21,3,9,15 * * *"
+  workflow_dispatch:        # 수동 실행 버튼
+  push:
+    branches: [main]
+    paths: ["scan.py", "salary.py", "certs.py", "config.sample.json"]
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# 배포가 겹치지 않게 한 번에 하나만.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      # seen.json 은 NEW 배지 판정용, salary.json 은 보수 정보 캐시(30일).
+      # 러너는 매번 새 컨테이너라 캐시로 이어 붙여 준다.
+      - uses: actions/cache@v4
+        with:
+          path: |
+            seen.json
+            salary.json
+          key: state-${{ github.run_id }}
+          restore-keys: state-
+
+      - name: 목록 생성
+        env:
+          SERVICE_KEY: ${{ secrets.SERVICE_KEY }}
+          GONGGI_SERVER: "1"
+        run: |
+          python scan.py
+          mkdir -p _site
+          cp "채용공고.html" _site/index.html
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
