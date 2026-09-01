@@ -470,7 +470,7 @@ var S = {};
 try { S = JSON.parse(localStorage.getItem('certs') || 'null') || DEFAULTS; }
 catch (e) { S = DEFAULTS; }
 
-var FILTER = 'fit', SORT = 'fit', PER = 20, PAGE = 1;
+var FILTER = 'all', SORT = 'fit', PER = 20, PAGE = 1;
 var PANEL = document.getElementById('panel');
 
 function save() {
@@ -826,9 +826,12 @@ def render(rows, cfg, defaults, pay, comp):
     )
     payload += "var PAYYEAR=%d;\n" % (pay.get("year") or 0)
 
+    # '전체'가 첫 탭이자 기본 화면이다. 자격증으로 좁힌 화면만 먼저 보이면
+    # 경쟁률·초임처럼 다른 공고에 붙은 정보가 통째로 안 보인다.
+    # 정렬은 그대로 '자격증 적합순'이라 맞는 공고는 어차피 위로 올라온다.
     tabs = [
-        ("fit", "내 자격증 적합"), ("named", "공고 명시"), ("urgent", "마감 임박"),
-        ("new", "신규 공고"), ("inst", "관심 기관"), ("all", "전체"),
+        ("all", "전체"), ("fit", "내 자격증 적합"), ("named", "공고 명시"),
+        ("urgent", "마감 임박"), ("new", "신규 공고"), ("inst", "관심 기관"),
     ]
     tab_html = "".join(
         '<button%s data-f="%s">%s<span>0</span></button>'
