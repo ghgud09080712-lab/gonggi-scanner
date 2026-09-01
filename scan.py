@@ -26,6 +26,7 @@ import urllib.request
 import certs
 import salary
 import compete
+import detail
 
 try:
     sys.stdout.reconfigure(encoding="utf-8")
@@ -459,6 +460,15 @@ td.rt{cursor:help}
 .rt-n.easy{color:var(--green)}
 .rt-s{display:block;font-size:11.5px;color:var(--ink3);margin-top:1px}
 
+.srs{display:block;margin-top:5px;font-size:11.5px;color:var(--ink3);line-height:1.6}
+.srs b{color:var(--pri2);font-weight:600}
+.atc{margin-top:6px;display:flex;flex-wrap:wrap;gap:4px 10px;font-size:11.5px}
+.atc a{color:var(--pri2);text-decoration:none;border-bottom:1px solid transparent}
+.atc a:hover{border-bottom-color:var(--pri2)}
+.atc a::before{content:"\\1F4CE";margin-right:3px;opacity:.7}
+.acb{display:inline-block;font-size:11px;line-height:1.6;padding:0 6px;border-radius:3px;
+background:var(--sf2,#eef0eb);border:1px solid var(--line);color:var(--ink3);margin-right:5px}
+
 @media(max-width:900px){
 .list col.hide,.list th.hide,.list td.hide{display:none}
 h1{font-size:24px}
@@ -511,10 +521,23 @@ function scoreOne(rec, name, state) {
 
   var kwHit = c.kw.filter(function (k) { return rec.title.indexOf(k) > -1; });
 
-  if (!named && !kwHit.length && !(ncsHit && (specific || rec.interest))) return null;
+  // 상세에서 받은 '직렬명'이 있으면 NCS 대분류보다 훨씬 정확하다.
+  // 통합공채는 NCS 가 5~6개씩 붙어 그것만으론 내 직렬이 있는지 알 수 없다.
+  var srs = rec.series || [];
+  var sHit = srs.length ? c.kw.filter(function (k) {
+    return srs.some(function (t) { return t.indexOf(k) > -1; });
+  }) : [];
 
-  var w = named ? 100 : kwHit.length * 8 + (ncsHit ? 12 / Math.sqrt(Math.max(1, n)) : 0);
-  return { name: name, state: state, named: named, ncs: ncsHit, kw: kwHit, w: w };
+  // 직렬을 다 아는 공고인데 하나도 안 맞으면 NCS 만으로는 후보에 올리지 않는다.
+  var known = srs.length >= 2;
+  if (!named && !kwHit.length && !sHit.length &&
+      !(ncsHit && !known && (specific || rec.interest))) return null;
+
+  var w = named ? 100
+        : sHit.length * 20 + kwHit.length * 8 +
+          (ncsHit ? 12 / Math.sqrt(Math.max(1, n)) : 0);
+  return { name: name, state: state, named: named, ncs: ncsHit,
+           kw: kwHit, srs: sHit, w: w };
 }
 
 function evaluate(rec) {
@@ -618,19 +641,42 @@ function row(rec, ev, no) {
 
   var bg = ev.hits.slice(0, 4).map(function (h) {
     var cl = h.named ? 'bg named' : (h.state === 2 ? 'bg plan' : 'bg');
-    var why = h.named ? ' 명시' : (h.state === 2 ? ' 예정' : '');
+    var why = h.named ? ' 명시'
+            : (h.srs && h.srs.length ? ' 직렬'
+            : (h.state === 2 ? ' 예정' : ''));
     return '<span class="' + cl + '">' + esc(h.name) + why + '</span>';
   });
   if (ev.hits.length > 4) {
     bg.push('<span class="bg rest">외 ' + (ev.hits.length - 4) + '</span>');
   }
 
+  // 직렬은 통합공채에서 특히 쓸모 있다. 몇 개만 보이고 나머지는 툴팁으로.
+  var srsLine = '';
+  if (rec.series && rec.series.length) {
+    // 바깥의 head(배지 줄)와 이름이 겹치면 var 호이스팅으로 덮어써진다.
+    var sHead = rec.series.slice(0, 3).map(esc).join(' · ');
+    var more = rec.series.length > 3 ? ' 외 ' + (rec.series.length - 3) : '';
+    srsLine = '<span class="srs" title="' + esc(rec.series.join('\\n')) + '">' +
+              '<b>직렬</b> ' + sHead + more + '</span>';
+  }
+
+  var atc = '';
+  if (rec.files && rec.files.length) {
+    atc = '<div class="atc">' + rec.files.map(function (f) {
+      return '<a href="' + esc(f.u) + '" target="_blank" rel="noopener">' +
+             esc(f.n) + '</a>';
+    }).join('') + '</div>';
+  }
+
+  var acb = rec.acbg ? '<span class="acb">' + esc(rec.acbg) + '</span>' : '';
+
   var hi = shorten(rec.hire, 1, '');
 
   return '<tr>' +
     '<td>' + no + '</td>' +
-    '<td class="t">' + head + t +
+    '<td class="t">' + head + acb + t +
       (sub.length ? '<span class="sub2">' + sub.join(' · ') + '</span>' : '') +
+      srsLine + atc +
       (bg.length ? '<div class="badges">' + bg.join('') + '</div>' : '') +
     '</td>' +
     '<td>' + esc(rec.inst) + '</td>' +
@@ -799,7 +845,7 @@ def build_picker():
     out.append("</tbody></table>")
     return "".join(out)
 
-def render(rows, cfg, defaults, pay, comp):
+def render(rows, cfg, defaults, pay, comp, dets):
     data = []
     for r, is_new in rows:
         d = dday(r)
@@ -815,8 +861,14 @@ def render(rows, cfg, defaults, pay, comp):
         sal = salary.attach(r["inst"], pay)
         data[-1]["pay"] = ({"p": sal["pay"], "a": sal["avg"], "m": sal["mon"]}
                            if sal else None)
-        # 과거 공고에서 모은 그 기관의 경쟁률. 아직 표본이 없으면 비운다.
-        cs = compete.summary(r["inst"], comp)
+        # 상세에서 받은 학력·직렬·첨부.
+        info = dets.get(str(r["sn"])) or {}
+        data[-1]["acbg"] = info.get("acbg") or ""
+        data[-1]["series"] = info.get("series") or []
+        data[-1]["files"] = info.get("files") or []
+
+        # 과거 공고에서 모은 그 기관의 경쟁률. 같은 직렬 표본이 있으면 그걸 쓴다.
+        cs = compete.summary(r["inst"], comp, series=info.get("series"))
         data[-1]["cmp"] = ({"r": cs["med"], "n": cs["n"], "k": cs["kind"],
                             "lo": cs["lo"], "hi": cs["hi"], "top": cs["top"]}
                            if cs else None)
@@ -967,13 +1019,24 @@ def collect(args=()):
     first_run = not seen
 
     keep = [r for r in recs if "--all" in args or gate(r, cfg)]
+
+    # 상세를 받아 학력조건으로 한 번 더 거른다. 석·박사만 뽑는 공고는
+    # 목록에 있어 봐야 소음이다. 상세를 못 받았으면 그냥 통과시킨다.
+    dets = detail.load(cfg["serviceKey"], [r["sn"] for r in keep])
+    want = [x for x in cfg.get("학력조건", []) if x]
+    if want:
+        before = len(keep)
+        keep = [r for r in keep if detail.acbg_ok(dets.get(str(r["sn"])), want)]
+        if before != len(keep):
+            print("  학력조건으로 %d건 제외" % (before - len(keep)))
+
     rows = [(r, (not first_run) and r["sn"] not in seen) for r in keep]
     rows.sort(key=lambda t: (dday(t[0]) if dday(t[0]) is not None else 9999, t[0]["inst"]))
 
     defaults = {n: 1 for n in cfg.get("보유자격증", []) if n in certs.flat()}
     defaults.update({n: 2 for n in cfg.get("취득예정자격증", []) if n in certs.flat()})
 
-    return cfg, recs, rows, defaults, first_run
+    return cfg, recs, rows, defaults, first_run, dets
 
 
 def save_seen(recs):
@@ -986,10 +1049,10 @@ def save_seen(recs):
 
 def build_html(args=()):
     """app.py 가 부르는 진입점. (HTML 문자열, 공고 수) 를 돌려준다."""
-    cfg, recs, rows, defaults, _first = collect(args)
+    cfg, recs, rows, defaults, _first, dets = collect(args)
     pay = salary.load(force="--salary" in args)
     comp = compete_load(cfg, rows, args)
-    html = render(rows, cfg, defaults, pay, comp)
+    html = render(rows, cfg, defaults, pay, comp, dets)
     save_seen(recs)
     return html, len(rows)
 
@@ -1010,12 +1073,12 @@ def main():
         input("\n엔터를 누르면 닫힙니다...")
         return
 
-    cfg, recs, rows, defaults, first_run = collect(args)
+    cfg, recs, rows, defaults, first_run, dets = collect(args)
     pay = salary.load(force="--salary" in args)
     comp = compete_load(cfg, rows, args)
 
     with open(OUT, "w", encoding="utf-8") as f:
-        f.write(render(rows, cfg, defaults, pay, comp))
+        f.write(render(rows, cfg, defaults, pay, comp, dets))
     save_seen(recs)
 
     n_new = sum(1 for _r, is_new in rows if is_new)

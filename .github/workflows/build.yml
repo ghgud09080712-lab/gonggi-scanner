@@ -43,6 +43,7 @@ jobs:
           path: |
             seen.json
             salary.json
+            detail.json
           key: state-${{ github.run_id }}
           restore-keys: state-
 

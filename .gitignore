@@ -11,3 +11,4 @@ __pycache__/
 
 # compete.json 은 무시하지 않는다 — 모아 둔 경쟁률 표본을 씨앗으로 함께 올린다
 .env
+detail.json

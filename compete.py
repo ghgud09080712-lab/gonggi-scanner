@@ -25,6 +25,7 @@
 
 import io
 import json
+import re
 import os
 import time
 import datetime as dt
@@ -327,7 +328,25 @@ def load(key, gate, interest, targets, force=False, quiet=False):
     return collect(key, gate, interest, targets, quiet=quiet)
 
 
-def summary(inst_name, doc, prefer_new=True):
+def _flat(s):
+    """직렬명 대조용. 대괄호·기호·공백을 털어 붙인다."""
+    s = re.sub(r"[\[\](){}<>·,/\-_]", " ", str(s or ""))
+    return re.sub(r"\s+", "", s)
+
+
+def _same_series(sample_title, series):
+    """표본의 직렬명이 이 공고의 직렬 중 하나와 같은 것인지."""
+    a = _flat(sample_title)
+    if len(a) < 2:
+        return False
+    for s in series or []:
+        b = _flat(s)
+        if len(b) >= 2 and (a in b or b in a):
+            return True
+    return False
+
+
+def summary(inst_name, doc, prefer_new=True, series=None):
     """기관 하나의 요약. 중앙값과 표본을 돌려준다.
 
     신입 표본이 3건 이상이면 그것만 쓴다. 경력·인턴 공고는 경쟁률이
@@ -336,6 +355,19 @@ def summary(inst_name, doc, prefer_new=True):
     if not rows:
         return None
     kind = "표본"
+
+    # 같은 기관도 직렬마다 경쟁률이 몇 배씩 차이 난다.
+    # 이 공고의 직렬과 같은 표본이 있으면 그것만 쓴다.
+    if series:
+        same = [r for r in rows if _same_series(r.get("t"), series)]
+        if same:
+            vals = sorted(r["r"] for r in same)
+            n = len(vals)
+            med = vals[n // 2] if n % 2 else round((vals[n // 2 - 1] + vals[n // 2]) / 2, 1)
+            return {"med": med, "n": n, "kind": "직렬",
+                    "lo": vals[0], "hi": vals[-1],
+                    "top": sorted(same, key=lambda r: -(r.get("a") or 0))[:6]}
+
     if prefer_new:
         fresh = [r for r in rows if "신입" in str(r.get("se") or "")]
         if len(fresh) >= 3:
