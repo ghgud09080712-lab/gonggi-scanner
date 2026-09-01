@@ -36,6 +36,19 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 CACHE = os.path.join(HERE, "compete.json")
 BASE = "https://apis.data.go.kr/1051000/recruitment/"
 
+# 알리오 개방데이터 포털(청년일자리)이 자기 '오픈API 조회' 화면을 그리려고 쓰는
+# 주소다. 원본이 같아서 파라미터 이름도 응답 필드도 data.go.kr 것과 똑같은데
+# 인증키가 필요 없고 하루 한도에도 안 걸린다. 목록은 numOfRows=1000 이 먹혀서
+# 한 달치가 요청 한 번에 끝난다(data.go.kr 은 100건씩 6번).
+#
+# 다만 공식 개방 API 가 아니라 사이트 내부 주소라 예고 없이 바뀔 수 있다.
+# 그래서 이걸 먼저 쓰되, 실패하면 조용히 data.go.kr 경로로 되돌아간다.
+ALIO = "https://opendata.alio.go.kr/new/odaApiMng/recrutInquiryAjax%s.do"
+ALIO_REF = "https://opendata.alio.go.kr/new/odaApiMng/recrutInquiryList.do"
+ALIO_ROWS = 1000      # 목록 한 번에 받을 건수
+ALIO_PAUSE = 0.35     # 남의 웹서버다. 호출 사이에 간격을 둔다
+ALIO_GIVEUP = 3       # 연속 이만큼 실패하면 이번 실행에서는 안 쓴다
+
 BUDGET = 400          # 한 번 실행에서 쓸 API 호출 수 (일 한도 1,000회)
 MONTHS = 18           # 몇 달 전까지 훑을지
                       # 신입 공채는 연 1~2회고 공고 하나에 직렬이 여러 개라
@@ -99,7 +112,37 @@ class Budget(object):
         self.left -= 1
 
 
+_alio_fail = [0]
+
+
+def _alio(ep, kw):
+    """알리오 내부 엔드포인트로 같은 데이터를 받아 data.go.kr 모양으로 맞춘다."""
+    body = urllib.parse.urlencode(kw).encode("utf-8")
+    req = urllib.request.Request(
+        ALIO % ("Detail" if ep == "detail" else "List"), data=body,
+        headers={"User-Agent": "Mozilla/5.0", "Referer": ALIO_REF,
+                 "X-Requested-With": "XMLHttpRequest",
+                 "Content-Type": "application/x-www-form-urlencoded"})
+    time.sleep(ALIO_PAUSE)
+    with urllib.request.urlopen(req, timeout=45) as r:
+        d = json.loads(r.read().decode("utf-8", "replace"))
+    d = d.get("data") or {}
+    res = d.get("result")
+    if res is None:
+        raise ValueError("빈 응답")
+    return {"result": res, "totalCount": d.get("totalCount")}
+
+
 def _api(key, ep, budget, **kw):
+    # 한도를 안 쓰는 경로부터 시도한다. 여기서 받아지면 budget 은 건드리지 않는다.
+    if _alio_fail[0] < ALIO_GIVEUP:
+        try:
+            out = _alio(ep, dict(kw, ongoingYn="A"))
+            _alio_fail[0] = 0
+            return out
+        except Exception:
+            _alio_fail[0] += 1
+
     budget.spend()
     kw.update({"serviceKey": key, "resultType": "json"})
     url = BASE + ep + "?" + urllib.parse.urlencode(kw)
@@ -214,15 +257,16 @@ def collect(key, gate, interest, targets, quiet=False):
             if pend is None:
                 # 이 달 목록을 모아 후보를 만든다.
                 cand = []
+                rows = ALIO_ROWS if _alio_fail[0] < ALIO_GIVEUP else 100
                 for page in range(1, 40):
-                    d = _api(key, "list", budget, numOfRows=100, pageNo=page,
+                    d = _api(key, "list", budget, numOfRows=rows, pageNo=page,
                              pbancBgngYmd=bgn, pbancEndYmd=end)
                     rs = d.get("result") or []
                     for x in rs:
                         r = scan.norm(x)
                         if r["sn"] not in seen and want(r):
                             cand.append([r["sn"], r["inst"]])
-                    if len(rs) < 100:
+                    if len(rs) < rows:
                         break
                 # 한전KPS 처럼 한 달에 공고를 100건씩 내는 기관이 있다.
                 # 그런 기관이 예산을 통째로 먹지 않도록 기관별로 잘라
