@@ -5,7 +5,7 @@
 목록 API 는 메타정보만 준다. 상세에는 세 가지가 더 있고 셋 다 쓸모가 크다.
 
   acbgCondNmLst  학력조건. 석·박사만 뽑는 공고를 걸러낼 수 있다
-  files[]        공고문 첨부 + 다운로드 URL. 자격증 가점표가 이 안에 있다
+  files[]        공고문 첨부. 자격증 가점표가 이 안에 있다 (URL 은 갈아끼운다)
   steps[]        전형단계. sortNo 가 직렬이라 '직렬명'을 뽑아낼 수 있다
 
 특히 직렬명이 중요하다. 통합공채는 NCS 대분류가 5~6개씩 붙어서 그것만으로는
@@ -27,7 +27,10 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 CACHE = os.path.join(HERE, "detail.json")
 BASE = "https://apis.data.go.kr/1051000/recruitment/detail"
 
+ALIO_FILE = "https://www.alio.go.kr/download/download.json?fileNo=%s"
+
 CACHE_DAYS = 7
+SCHEMA = 2            # 캐시 형식. 올리면 예전 캐시를 통째로 버린다
 MAX_FILES = 4
 MAX_SERIES = 40
 HEADERS = {"User-Agent": "gonggi-scanner/1.0"}
@@ -42,7 +45,8 @@ def _load():
         try:
             with io.open(CACHE, encoding="utf-8") as f:
                 d = json.load(f)
-            if isinstance(d, dict) and isinstance(d.get("items"), dict):
+            if (isinstance(d, dict) and isinstance(d.get("items"), dict)
+                    and d.get("v") == SCHEMA):
                 return d
         except Exception:
             pass
@@ -50,6 +54,7 @@ def _load():
 
 
 def _save(doc):
+    doc["v"] = SCHEMA
     try:
         with io.open(CACHE, "w", encoding="utf-8") as f:
             f.write(json.dumps(doc, ensure_ascii=False))
@@ -95,7 +100,12 @@ def extract(det):
 
     files = []
     for f in det.get("files") or []:
-        url, name = f.get("url"), (f.get("atchFileNm") or "").strip()
+        name = (f.get("atchFileNm") or "").strip()
+        no = f.get("recrutAtchFileNo")
+        # API 가 주는 url(opendata.alio.go.kr/recruit/downloadAtchFile)은 죽었다.
+        # 포털이 /new 로 개편되면서 파일 대신 API 안내 페이지(/new/main.do)로
+        # 302 로 튕긴다. 알리오 본체의 다운로드는 살아 있고 같은 파일번호를 쓴다.
+        url = (ALIO_FILE % no) if no else f.get("url")
         if url and name:
             files.append({"n": name[:70], "u": url})
         if len(files) >= MAX_FILES:
