@@ -421,11 +421,6 @@ background:var(--tint);color:var(--pri2);white-space:nowrap}
 .dd{font-size:13.5px;font-weight:700;color:var(--pri2)}
 .dd.u{color:var(--red)}
 .dd.s{color:var(--orange)}
-.st2{font-size:12.5px;font-weight:500}
-.st2.u{color:var(--red);font-weight:700}
-.st2.s{color:var(--orange)}
-.st2.n{color:var(--pri2)}
-.st2.a{color:var(--ink3)}
 .pin{display:inline-block;font-size:11px;line-height:1.6;padding:0 6px;
 border:1px solid var(--pri3);color:var(--pri2);border-radius:3px;margin-right:5px}
 .isnew{display:inline-block;font-size:11px;line-height:1.6;padding:0 6px;
@@ -469,6 +464,15 @@ td.rt{cursor:help}
 .acb{display:inline-block;font-size:11px;line-height:1.6;padding:0 6px;border-radius:3px;
 background:var(--sf2,#eef0eb);border:1px solid var(--line);color:var(--ink3);margin-right:5px}
 
+.ap-b{font:inherit;font-size:12px;padding:3px 10px;border-radius:12px;cursor:pointer;
+border:1px dashed var(--line);background:none;color:#b8b8b8;white-space:nowrap;line-height:1.5}
+.ap-b:hover{border-color:var(--pri3);color:var(--pri2)}
+.ap-b.s1{border:1px solid var(--pri3);background:var(--tint);color:var(--pri2);font-weight:700}
+.ap-b.s2{border:1px solid var(--pri);background:var(--pri);color:#fff;font-weight:700}
+.ap-b.s3{border:1px solid var(--green);background:#e4f1e9;color:var(--green);font-weight:700}
+.ap-b.s4{border:1px solid var(--line);background:var(--soft);color:var(--ink3);
+text-decoration:line-through}
+
 @media(max-width:900px){
 .list col.hide,.list th.hide,.list td.hide{display:none}
 h1{font-size:24px}
@@ -482,6 +486,16 @@ try { S = JSON.parse(localStorage.getItem('certs') || 'null') || DEFAULTS; }
 catch (e) { S = DEFAULTS; }
 
 var FILTER = 'all', SORT = 'fit', PER = 20, PAGE = 1;
+
+// 공고별 지원 상태. 0 미표시 -> 1 관심 -> 2 지원함 -> 3 서류합격 -> 4 탈락
+var MARKS = ['-', '관심', '지원함', '서류합격', '탈락'];
+var A = {};
+try { A = JSON.parse(localStorage.getItem('applied') || '{}') || {}; }
+catch (e) { A = {}; }
+
+function saveA() {
+  try { localStorage.setItem('applied', JSON.stringify(A)); } catch (e) {}
+}
 var PANEL = document.getElementById('panel');
 
 function save() {
@@ -600,6 +614,13 @@ function payCell(rec) {
     '</td>';
 }
 
+function markCell(rec) {
+  var v = A[rec.sn] || 0;
+  return '<td><button class="ap-b s' + v + '" data-sn="' + esc(rec.sn) +
+         '" title="누를 때마다 관심 → 지원함 → 서류합격 → 탈락 → 해제">' +
+         MARKS[v] + '</button></td>';
+}
+
 function rateCell(rec) {
   var c = rec.cmp;
   if (!c) return '<td class="rt"><span class="pay-x">-</span></td>';
@@ -616,12 +637,11 @@ function rateCell(rec) {
 }
 
 function row(rec, ev, no) {
-  var d = rec.dday, cls = 'a', dd = '상시', st = '상시채용', when = '-';
+  var d = rec.dday, cls = 'a', dd = '상시', when = '-';
   if (d !== null) {
     dd = d > 0 ? 'D-' + d : (d === 0 ? 'D-DAY' : '마감');
     when = rec.endTxt;
     cls = d <= 3 ? 'u' : (d <= 10 ? 's' : 'n');
-    st = d <= 3 ? '마감임박' : (d <= 10 ? '마감주의' : '진행중');
   }
 
   var head = '';
@@ -687,7 +707,7 @@ function row(rec, ev, no) {
                                               : hi.txt, hi.n > 1 ? rec.hire : '') : '-') + '</td>' +
     '<td><span class="ymd">' + esc(when) + '</span>' +
         '<span class="dd ' + cls + '">' + dd + '</span></td>' +
-    '<td><span class="st2 ' + cls + '">' + st + '</span></td>' +
+    markCell(rec) +
     '</tr>';
 }
 
@@ -697,6 +717,7 @@ function match(x, f) {
   if (f === 'urgent') return x.r.dday !== null && x.r.dday <= 10;
   if (f === 'new') return x.r.isNew;
   if (f === 'inst') return !!x.r.interest;
+  if (f === 'mine') return !!A[x.r.sn];
   return x.e.score > 0;                       // 'fit'
 }
 
@@ -803,6 +824,17 @@ document.querySelectorAll('.tabs button').forEach(function (b) {
     b.classList.add('on'); FILTER = b.dataset.f; PAGE = 1; run();
   };
 });
+// 표를 다시 그릴 때마다 핸들러를 달면 중복되므로 tbody 한 곳에만 건다.
+document.getElementById('tbody').addEventListener('click', function (e) {
+  var b = e.target.closest ? e.target.closest('.ap-b') : null;
+  if (!b) return;
+  var sn = b.dataset.sn;
+  A[sn] = ((A[sn] || 0) + 1) % MARKS.length;
+  if (!A[sn]) delete A[sn];
+  saveA();
+  run();
+});
+
 document.getElementById('sort').onchange = function () {
   SORT = this.value; PAGE = 1; run();
 };
@@ -850,6 +882,7 @@ def render(rows, cfg, defaults, pay, comp, dets):
     for r, is_new in rows:
         d = dday(r)
         data.append({
+            "sn": r["sn"],
             "inst": r["inst"], "title": r["title"], "ncs": r["ncs"], "rgn": r["rgn"],
             "nope": r["nope"], "se": r["se"], "hire": r["hire"], "url": r["url"],
             "interest": interest(r, cfg), "isNew": bool(is_new),
@@ -885,8 +918,9 @@ def render(rows, cfg, defaults, pay, comp, dets):
     # 경쟁률·초임처럼 다른 공고에 붙은 정보가 통째로 안 보인다.
     # 정렬은 그대로 '자격증 적합순'이라 맞는 공고는 어차피 위로 올라온다.
     tabs = [
-        ("all", "전체"), ("fit", "내 자격증 적합"), ("named", "공고 명시"),
-        ("urgent", "마감 임박"), ("new", "신규 공고"), ("inst", "관심 기관"),
+        ("all", "전체"), ("mine", "내 표시"), ("fit", "내 자격증 적합"),
+        ("named", "공고 명시"), ("urgent", "마감 임박"), ("new", "신규 공고"),
+        ("inst", "관심 기관"),
     ]
     tab_html = "".join(
         '<button%s data-f="%s">%s<span>0</span></button>'
@@ -896,7 +930,7 @@ def render(rows, cfg, defaults, pay, comp, dets):
 
     cols = [("번호", "48", ""), ("채용제목", "", ""), ("기관명", "146", ""),
             ("신입 초임", "98", ""), ("경쟁률", "88", ""), ("근무지", "88", "hide"),
-            ("고용형태", "98", "hide"), ("마감일", "88", ""), ("상태", "78", "")]
+            ("고용형태", "98", "hide"), ("마감일", "88", ""), ("내 상태", "92", "")]
     colgroup = "".join(
         '<col%s%s>' % (' style="width:%spx"' % w if w else "",
                        ' class="hide"' if c else "")
@@ -963,6 +997,8 @@ def render(rows, cfg, defaults, pay, comp, dets):
         "표시가 없으면 NCS 직무·공고 제목으로 추정한 것이니 원문을 반드시 확인하세요.</p>",
         "<p>※ 대부분의 공고는 자격 요건을 첨부파일로 넘기기 때문에 API 본문만으로는 ",
         "명시 여부를 모두 확인할 수 없습니다.</p>",
+        "<p>※ <b>내 상태</b> 칸을 누르면 관심 → 지원함 → 서류합격 → 탈락 → 해제 순으로 ",
+        "바뀝니다. 이 브라우저에만 저장되며 <b>내 표시</b> 탭에서 모아 볼 수 있습니다.</p>",
         "<p>※ <b>경쟁률</b>은 그 기관의 <b>지난 공고</b>에서 확인된 값(지원자수 ÷ 최종선발인원)의 ",
         "중앙값이며, 이번 공고의 경쟁률이 아닙니다. 직렬마다 크게 다르니 마우스를 올려 ",
         "표본을 확인하세요. 표본이 아직 없는 기관은 빈칸입니다.</p>",
