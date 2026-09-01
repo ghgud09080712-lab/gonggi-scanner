@@ -1,0 +1,11 @@
+# 인증키가 들어 있다. 절대 올리지 않는다.
+config.json
+
+# 실행하면 다시 만들어지는 것들
+채용공고.html
+seen.json
+salary.json
+__pycache__/
+*.pyc
+*.bak
+.env
