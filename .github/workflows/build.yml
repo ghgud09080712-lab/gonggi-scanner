@@ -11,10 +11,10 @@ on:
   workflow_dispatch:        # 수동 실행 버튼
   push:
     branches: [main]
-    paths: ["scan.py", "salary.py", "certs.py", "config.sample.json"]
+    paths: ["scan.py", "salary.py", "certs.py", "compete.py", "config.sample.json"]
 
 permissions:
-  contents: read
+  contents: write           # compete.json 을 저장소에 누적 커밋한다
   pages: write
   id-token: write
 
@@ -33,15 +33,16 @@ jobs:
         with:
           python-version: "3.12"
 
-      # seen.json 은 NEW 배지 판정용, salary.json 은 보수 캐시(30일),
-      # compete.json 은 과거 경쟁률 표본(하루에 API 200회씩 이어서 모은다).
+      # seen.json 은 NEW 배지 판정용, salary.json 은 보수 캐시(30일).
       # 러너는 매번 새 컨테이너라 캐시로 이어 붙여 준다.
+      #
+      # compete.json 은 일부러 여기 넣지 않는다. 저장소에 커밋해 쌓는 값이라
+      # 캐시에 두면 오래된 캐시가 커밋된 최신본을 덮어써 표본이 되레 줄어든다.
       - uses: actions/cache@v4
         with:
           path: |
             seen.json
             salary.json
-            compete.json
           key: state-${{ github.run_id }}
           restore-keys: state-
 
@@ -53,6 +54,21 @@ jobs:
           python scan.py
           mkdir -p _site
           cp "채용공고.html" _site/index.html
+
+      # 경쟁률 표본은 하루 API 400회씩 몇 주에 걸쳐 쌓인다.
+      # 러너 디스크는 매번 날아가므로 저장소에 되돌려 놔야 이어서 모을 수 있다.
+      - name: 경쟁률 표본 커밋
+        run: |
+          if git diff --quiet -- compete.json; then
+            echo "표본 변화 없음 — 커밋 생략"
+            exit 0
+          fi
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add compete.json
+          git commit -m "경쟁률 표본 갱신 [skip ci]"
+          git pull --rebase --autostash origin main
+          git push origin HEAD:main
 
       - uses: actions/upload-pages-artifact@v3
         with:
