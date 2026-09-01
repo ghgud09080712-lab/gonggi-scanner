@@ -739,7 +739,7 @@ function run() {
               : '위 <b>내 자격증</b>을 펼쳐 보유 자격증을 먼저 선택해 주세요.') + '</td></tr>';
   } else {
     tb.innerHTML = page.map(function (x, i) {
-      return row(x.r, x.e, rows.length - (from + i));
+      return row(x.r, x.e, from + i + 1);      // 1번부터 차례대로
     }).join('');
   }
   pager(rows.length);
