@@ -16,6 +16,8 @@
 
 전체를 훑으면 요청이 수천 건이라 하루 한도(1,000회)를 넘긴다. 그래서
   - 한 번 실행에 BUDGET 회만 쓰고 중단한 지점을 compete.json 에 저장한다
+    (저장소에 들어 있는 compete.json 은 씨앗이다. 깃허브 액션은 캐시가 있으면
+     그쪽을 쓰고, 없으면 이 씨앗에서 이어서 모은다)
   - 관심기관을 먼저 처리해 쓸모 있는 값이 빨리 쌓이게 한다
   - 이미 본 공고 번호는 다시 조회하지 않는다
 여러 번 실행하며 조금씩 채워 나가는 구조다.
@@ -33,7 +35,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 CACHE = os.path.join(HERE, "compete.json")
 BASE = "https://apis.data.go.kr/1051000/recruitment/"
 
-BUDGET = 200          # 한 번 실행에서 쓸 API 호출 수
+BUDGET = 400          # 한 번 실행에서 쓸 API 호출 수 (일 한도 1,000회)
 MONTHS = 30           # 몇 달 전까지 훑을지
 SKIP_RECENT = 5       # 최근 몇 달은 건너뛸지 — 전형이 끝나야 지원인원이 공시된다
 MAX_PER_INST = 40     # 기관당 보관할 표본 수
