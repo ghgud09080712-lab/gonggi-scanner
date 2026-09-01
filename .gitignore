@@ -5,6 +5,7 @@ config.json
 채용공고.html
 seen.json
 salary.json
+compete.json
 __pycache__/
 *.pyc
 *.bak

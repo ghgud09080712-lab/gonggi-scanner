@@ -1,0 +1,294 @@
+# -*- coding: utf-8 -*-
+"""
+마감된 공고에서 기관별·직렬별 경쟁률을 모은다.
+
+진행 중인 공고는 지원인원이 전부 비어 있지만, 마감된 공고에는 들어온다.
+`/detail` 의 steps 구조를 알아야 제대로 읽을 수 있다.
+
+  steps 는 sortNo 가 '직렬', 그 안의 행들이 '전형 단계'다.
+  한 직렬 그룹에서
+    - 첫 단계 행의 aplyNope  = 총 지원자 수
+    - cmpttRt 가 채워진 행     = 마지막 단계. recrutNope 가 최종 선발인원
+    - 그 행의 cmpttRt          = 공식 경쟁률 (지원자수 ÷ 최종선발인원)
+
+  예) 한국장학재단 5급-일반행정 : 지원 2,338 ÷ 최종 18 = 129.89 = cmpttRt
+  그래서 직접 계산하지 않고 cmpttRt 를 그대로 쓴다.
+
+전체를 훑으면 요청이 수천 건이라 하루 한도(1,000회)를 넘긴다. 그래서
+  - 한 번 실행에 BUDGET 회만 쓰고 중단한 지점을 compete.json 에 저장한다
+  - 관심기관을 먼저 처리해 쓸모 있는 값이 빨리 쌓이게 한다
+  - 이미 본 공고 번호는 다시 조회하지 않는다
+여러 번 실행하며 조금씩 채워 나가는 구조다.
+"""
+
+import io
+import json
+import os
+import time
+import datetime as dt
+import urllib.parse
+import urllib.request
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+CACHE = os.path.join(HERE, "compete.json")
+BASE = "https://apis.data.go.kr/1051000/recruitment/"
+
+BUDGET = 200          # 한 번 실행에서 쓸 API 호출 수
+MONTHS = 30           # 몇 달 전까지 훑을지
+SKIP_RECENT = 5       # 최근 몇 달은 건너뛸지 — 전형이 끝나야 지원인원이 공시된다
+MAX_PER_INST = 40     # 기관당 보관할 표본 수
+PER_INST_MONTH = 4    # 한 기관에서 한 달에 상세 조회할 공고 수 상한
+MAX_AGE_DAYS = 0      # 날짜가 바뀌면 이어서 더 모은다 (하루 한 번)
+
+
+def _key(name):
+    """기관명 대조용. (주)·(재) 와 공백·기호를 턴다."""
+    import re
+    s = re.sub(r"\((주|재|사|사단법인|재단법인|학교법인)\)", "", str(name or ""))
+    return re.sub(r"[^0-9A-Za-z가-힣]", "", s)
+
+
+def _empty():
+    return {"updated": "", "done_months": [], "pending": {}, "seen": [], "inst": {}}
+
+
+def load_cache():
+    if os.path.exists(CACHE):
+        try:
+            with io.open(CACHE, encoding="utf-8") as f:
+                d = json.load(f)
+            for k, v in _empty().items():
+                d.setdefault(k, v)
+            return d
+        except Exception:
+            pass
+    return _empty()
+
+
+def save_cache(d):
+    try:
+        with io.open(CACHE, "w", encoding="utf-8") as f:
+            f.write(json.dumps(d, ensure_ascii=False))
+    except OSError:
+        pass
+
+
+class Budget(object):
+    """남은 호출 수를 세는 것뿐이다. 다 쓰면 Stop 을 던진다."""
+
+    class Stop(Exception):
+        pass
+
+    def __init__(self, n):
+        self.left = n
+
+    def spend(self):
+        if self.left <= 0:
+            raise Budget.Stop()
+        self.left -= 1
+
+
+def _api(key, ep, budget, **kw):
+    budget.spend()
+    kw.update({"serviceKey": key, "resultType": "json"})
+    url = BASE + ep + "?" + urllib.parse.urlencode(kw)
+    req = urllib.request.Request(url, headers={"User-Agent": "gonggi-scanner/1.0"})
+    with urllib.request.urlopen(req, timeout=30) as r:
+        return json.loads(r.read().decode("utf-8", "replace"))
+
+
+def rates(detail):
+    """한 공고에서 직렬별 경쟁률을 뽑는다."""
+    groups = {}
+    for s in detail.get("steps") or []:
+        groups.setdefault(s.get("sortNo"), []).append(s)
+
+    out = []
+    for rows in groups.values():
+        final = None
+        for r in rows:
+            if r.get("cmpttRt") not in (None, ""):
+                final = r                      # 마지막 단계 행
+        if final is None:
+            continue
+        try:
+            rt = round(float(final["cmpttRt"]), 1)
+        except (TypeError, ValueError):
+            continue
+        if rt <= 0:
+            continue                            # 선발 0명이면 경쟁률이 의미 없다
+        aply = max([r.get("aplyNope") or 0 for r in rows] or [0])
+        out.append({
+            "t": (final.get("recrutPbancTtl") or "")[:40],
+            "r": rt,
+            "n": final.get("recrutNope") or 0,
+            "a": aply,
+        })
+    return out
+
+
+def _months(n, skip=0):
+    """이번 달에서 skip 개월 전부터 n개월 거슬러 올라가는 (시작일, 종료일, 키) 목록.
+
+    막 마감된 공고는 지원인원이 비어 있다. 전형이 다 끝나고 공시돼야
+    값이 들어오므로 최근 몇 달은 훑어도 소득이 없다."""
+    today = dt.date.today()
+    y, m = today.year, today.month
+    out = []
+    for _ in range(skip + n):
+        m -= 1
+        if m == 0:
+            y, m = y - 1, 12
+        first = dt.date(y, m, 1)
+        last = dt.date(y + (m == 12), (m % 12) + 1, 1) - dt.timedelta(days=1)
+        out.append((first.strftime("%Y%m%d"), last.strftime("%Y%m%d"), "%04d%02d" % (y, m)))
+    return out[skip:]
+
+
+def collect(key, gate, interest, targets, quiet=False):
+    """예산이 허락하는 만큼 모으고 캐시에 이어 붙인다.
+
+    gate 는 목록 필터보다 느슨하게 준다. 기관의 경쟁률 감을 잡는 게 목적이라
+    그 기관의 과거 공고면 신입이든 경력이든 표본으로 쓸모가 있다."""
+    import scan                                   # gate/norm 재사용
+
+    doc = load_cache()
+    seen = set(doc["seen"])
+    budget = Budget(BUDGET)
+    added = 0
+
+    # 상세 조회는 비싸다. 관심기관과 지금 목록에 뜨는 기관만 본다.
+    tset = {_key(t) for t in targets}
+
+    def is_target(inst):
+        k = _key(inst)
+        if k in tset:
+            return True
+        return any(_key(i) and _key(i) in k for i in interest)
+
+    def want(r):
+        return r["inst"] and is_target(r["inst"]) and gate(r)
+
+    try:
+        for bgn, end, key_m in _months(MONTHS, SKIP_RECENT):
+            if key_m in doc["done_months"]:
+                continue
+
+            pend = doc["pending"].get(key_m)
+            if pend is None:
+                # 이 달 목록을 모아 후보를 만든다.
+                cand = []
+                for page in range(1, 40):
+                    d = _api(key, "list", budget, numOfRows=100, pageNo=page,
+                             pbancBgngYmd=bgn, pbancEndYmd=end)
+                    rs = d.get("result") or []
+                    for x in rs:
+                        r = scan.norm(x)
+                        if r["sn"] not in seen and want(r):
+                            cand.append([r["sn"], r["inst"]])
+                    if len(rs) < 100:
+                        break
+                # 한전KPS 처럼 한 달에 공고를 100건씩 내는 기관이 있다.
+                # 그런 기관이 예산을 통째로 먹지 않도록 기관별로 잘라
+                # 번갈아 담는다. 관심기관은 각 바퀴에서 앞에 세운다.
+                by = {}
+                for row in cand:
+                    by.setdefault(row[1], []).append(row)
+                for rows in by.values():
+                    del rows[PER_INST_MONTH:]
+
+                def _first(row):
+                    k = _key(row[1])
+                    return 0 if any(_key(i) and _key(i) in k for i in interest) else 1
+
+                pend, turn = [], 0
+                while True:
+                    wave = [rows[turn] for rows in by.values() if turn < len(rows)]
+                    if not wave:
+                        break
+                    wave.sort(key=_first)
+                    pend.extend(wave)
+                    turn += 1
+                doc["pending"][key_m] = pend
+
+            while pend:
+                sn, inst = pend[0]
+                try:
+                    det = _api(key, "detail", budget, sn=sn)["result"]
+                except Budget.Stop:
+                    raise
+                except Exception:
+                    pend.pop(0)
+                    seen.add(sn)
+                    continue
+                pend.pop(0)
+                seen.add(sn)
+                rs = rates(det)
+                if rs:
+                    year = str(det.get("pbancEndYmd") or "")[:4]
+                    se = str(det.get("recrutSeNm") or "")
+                    bucket = doc["inst"].setdefault(inst, [])
+                    for one in rs:
+                        one["y"] = year
+                        one["se"] = se
+                        bucket.append(one)
+                    del bucket[:-MAX_PER_INST]
+                    added += len(rs)
+
+            doc["pending"].pop(key_m, None)
+            doc["done_months"].append(key_m)
+            if not quiet:
+                print("  %s 완료 (남은 호출 %d)" % (key_m, budget.left))
+    except Budget.Stop:
+        if not quiet:
+            print("  이번 실행 예산(%d회) 소진 — 다음 실행에 이어서 모읍니다" % BUDGET)
+    except Exception as e:
+        if not quiet:
+            print("  ! 경쟁률 수집 중단 (%s)" % type(e).__name__)
+
+    doc["seen"] = sorted(seen)[-20000:]
+    doc["updated"] = dt.date.today().isoformat()
+    save_cache(doc)
+    if not quiet:
+        print("  기관 %d곳 / 표본 %d건 (이번에 %d건 추가)"
+              % (len(doc["inst"]), sum(len(v) for v in doc["inst"].values()), added))
+    return doc
+
+
+def load(key, gate, interest, targets, force=False, quiet=False):
+    doc = load_cache()
+    if not force and doc["updated"]:
+        try:
+            age = (dt.date.today()
+                   - dt.date(*map(int, doc["updated"].split("-")))).days
+            if age <= MAX_AGE_DAYS:
+                if not quiet:
+                    print("  경쟁률 캐시 사용 (기관 %d곳, 표본 %d건)"
+                          % (len(doc["inst"]), sum(len(v) for v in doc["inst"].values())))
+                return doc
+        except Exception:
+            pass
+    if not quiet:
+        print("과거 공고에서 경쟁률 모으는 중…")
+    return collect(key, gate, interest, targets, quiet=quiet)
+
+
+def summary(inst_name, doc, prefer_new=True):
+    """기관 하나의 요약. 중앙값과 표본을 돌려준다.
+
+    신입 표본이 3건 이상이면 그것만 쓴다. 경력·인턴 공고는 경쟁률이
+    성격이 달라 섞으면 왜곡된다."""
+    rows = (doc.get("inst") or {}).get(inst_name)
+    if not rows:
+        return None
+    kind = "표본"
+    if prefer_new:
+        fresh = [r for r in rows if "신입" in str(r.get("se") or "")]
+        if len(fresh) >= 3:
+            rows, kind = fresh, "신입"
+    vals = sorted(r["r"] for r in rows)
+    n = len(vals)
+    med = vals[n // 2] if n % 2 else round((vals[n // 2 - 1] + vals[n // 2]) / 2, 1)
+    top = sorted(rows, key=lambda r: -(r.get("a") or 0))[:6]
+    return {"med": med, "n": n, "kind": kind,
+            "lo": vals[0], "hi": vals[-1], "top": top}

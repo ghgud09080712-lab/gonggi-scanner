@@ -33,13 +33,15 @@ jobs:
         with:
           python-version: "3.12"
 
-      # seen.json 은 NEW 배지 판정용, salary.json 은 보수 정보 캐시(30일).
+      # seen.json 은 NEW 배지 판정용, salary.json 은 보수 캐시(30일),
+      # compete.json 은 과거 경쟁률 표본(하루에 API 200회씩 이어서 모은다).
       # 러너는 매번 새 컨테이너라 캐시로 이어 붙여 준다.
       - uses: actions/cache@v4
         with:
           path: |
             seen.json
             salary.json
+            compete.json
           key: state-${{ github.run_id }}
           restore-keys: state-
 

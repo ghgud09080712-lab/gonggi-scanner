@@ -138,7 +138,7 @@ GitHub Pages 에 올립니다. 서버가 없으니 죽지 않고 비용도 들�
 - 인증키는 저장소 시크릿 `SERVICE_KEY` 에 들어 있습니다 (코드에는 없습니다)
 - 워크플로 정의는 `.github/workflows/build.yml`
 
-`seen.json`(NEW 판정)과 `salary.json`(보수 캐시)은 러너가 매번 새로 뜨기 때문에
+`seen.json`(NEW 판정), `salary.json`(보수 캐시), `compete.json`(경쟁률 표본)은 러너가 매번 새로 뜨기 때문에
 `actions/cache` 로 실행 사이에 이어 붙입니다.
 
 ## 8. 클라우드타입에 올리기
@@ -199,6 +199,7 @@ GitHub Pages 에 올립니다. 서버가 없으니 죽지 않고 비용도 들�
 ```
 scan.py             본체 (목록 생성)
 salary.py           알리오 경영공시에서 기관별 보수 가져오기
+compete.py          마감된 공고에서 기관별 과거 경쟁률 모으기
 certs.py            자격증 사전 (37개, 이름·NCS직무·제목낱말)
 app.py              서버용 진입점 (클라우드타입)
 config.json         인증키와 필터 — 로컬 전용, 깃허브에 안 올라감
@@ -207,6 +208,7 @@ requirements.txt    비어 있음 (표준 라이브러리만 사용)
 RUN.bat             로컬 실행
 seen.json           지난 실행에서 본 공고 번호 (NEW 판정용, 자동 생성)
 salary.json         보수 정보 캐시 (30일, 자동 생성)
+compete.json        과거 경쟁률 표본 (하루 200회씩 누적, 자동 생성)
 채용공고.html        결과 (자동 생성)
 ```
 

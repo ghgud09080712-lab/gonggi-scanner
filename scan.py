@@ -8,6 +8,7 @@
          python scan.py --dump     원본 JSON 첫 건을 뜯어보기(필드명 확인용)
          python scan.py --all      필터 없이 전부 출력
          python scan.py --salary   보수 정보(알리오 경영공시)를 강제로 다시 받기
+         python scan.py --compete  과거 경쟁률 표본을 더 모으기
 
 서버(클라우드타입)에서는 app.py 가 build_html() 을 불러 쓴다.
 인증키는 config.json 보다 SERVICE_KEY 환경변수가 우선한다.
@@ -24,6 +25,7 @@ import urllib.request
 
 import certs
 import salary
+import compete
 
 try:
     sys.stdout.reconfigure(encoding="utf-8")
@@ -442,6 +444,11 @@ border-radius:6px;padding:16px 18px;font-size:12.5px;color:var(--ink3);line-heig
 .pay-x{color:#bdbdbd}
 td.pay{cursor:help}
 
+.rate{display:block;margin-top:3px;font-size:11.5px;color:var(--ink3);cursor:help}
+.rate b{color:var(--pri2);font-weight:700}
+.rate.hot b{color:var(--red)}
+.rate.easy b{color:var(--green)}
+
 @media(max-width:900px){
 .list col.hide,.list th.hide,.list td.hide{display:none}
 h1{font-size:24px}
@@ -560,6 +567,20 @@ function payCell(rec) {
     '</td>';
 }
 
+function rateCell(rec) {
+  var c = rec.cmp;
+  if (!c) return '';
+  var cls = c.r >= 30 ? 'rate hot' : (c.r <= 8 ? 'rate easy' : 'rate');
+  var tip = '과거 ' + c.k + ' 공고 ' + c.n + '건의 경쟁률 중앙값 (' +
+            c.lo + ':1 ~ ' + c.hi + ':1)';
+  c.top.forEach(function (t) {
+    tip += '\\n· ' + t.y + ' ' + t.t + ' — ' + t.r + ':1 (지원 ' +
+           t.a.toLocaleString('ko-KR') + '명 → ' + t.n + '명)';
+  });
+  return '<span class="' + cls + '" title="' + esc(tip) + '">' +
+    '<b>' + c.r + ':1</b> ' + c.k + ' ' + c.n + '건</span>';
+}
+
 function row(rec, ev, no) {
   var d = rec.dday, cls = 'a', dd = '상시', st = '상시채용', when = '-';
   if (d !== null) {
@@ -601,7 +622,7 @@ function row(rec, ev, no) {
       (sub.length ? '<span class="sub2">' + sub.join(' · ') + '</span>' : '') +
       (bg.length ? '<div class="badges">' + bg.join('') + '</div>' : '') +
     '</td>' +
-    '<td>' + esc(rec.inst) + '</td>' +
+    '<td>' + esc(rec.inst) + rateCell(rec) + '</td>' +
     payCell(rec) +
     '<td class="hide">' + rgnCell(rec) + '</td>' +
     '<td class="hide">' + (hi ? hover(hi.n > 1 ? hi.txt.split(' 외 ')[0] + ' 외 ' + (hi.n - 1)
@@ -626,6 +647,12 @@ function dnum(r) { return r.dday === null ? 9999 : r.dday; }
 function sorter(a, b) {
   if (SORT === 'dday') return dnum(a.r) - dnum(b.r);
   if (SORT === 'inst') return a.r.inst.localeCompare(b.r.inst, 'ko');
+  if (SORT === 'rate') {
+    // 경쟁률은 낮을수록 좋다. 표본이 없는 기관은 뒤로 보낸다.
+    var ra = a.r.cmp ? a.r.cmp.r : 1e9, rb = b.r.cmp ? b.r.cmp.r : 1e9;
+    if (ra !== rb) return ra - rb;
+    return dnum(a.r) - dnum(b.r);
+  }
   if (SORT === 'pay') {
     var pa = a.r.pay ? a.r.pay.p : -1, pb = b.r.pay ? b.r.pay.p : -1;
     if (pa !== pb) return pb - pa;              // 초임 높은 순, 없으면 뒤로
@@ -760,7 +787,7 @@ def build_picker():
     out.append("</tbody></table>")
     return "".join(out)
 
-def render(rows, cfg, defaults, pay):
+def render(rows, cfg, defaults, pay, comp):
     data = []
     for r, is_new in rows:
         d = dday(r)
@@ -776,6 +803,11 @@ def render(rows, cfg, defaults, pay):
         sal = salary.attach(r["inst"], pay)
         data[-1]["pay"] = ({"p": sal["pay"], "a": sal["avg"], "m": sal["mon"]}
                            if sal else None)
+        # 과거 공고에서 모은 그 기관의 경쟁률. 아직 표본이 없으면 비운다.
+        cs = compete.summary(r["inst"], comp)
+        data[-1]["cmp"] = ({"r": cs["med"], "n": cs["n"], "k": cs["kind"],
+                            "lo": cs["lo"], "hi": cs["hi"], "top": cs["top"]}
+                           if cs else None)
     now = now_kst().strftime("%Y-%m-%d %H:%M")
     payload = (
         "var DATA=%s;\nvar CERTS=%s;\nvar DEFAULTS=%s;\n"
@@ -845,6 +877,7 @@ def render(rows, cfg, defaults, pay):
         '<select id="sort">',
         '<option value="fit">자격증 적합순</option>',
         '<option value="dday">마감 임박순</option>',
+        '<option value="rate">경쟁률 낮은순</option>',
         '<option value="pay">초임 높은순</option>',
         '<option value="inst">기관명순</option></select>',
         '<select id="per">',
@@ -863,6 +896,9 @@ def render(rows, cfg, defaults, pay):
         "표시가 없으면 NCS 직무·공고 제목으로 추정한 것이니 원문을 반드시 확인하세요.</p>",
         "<p>※ 대부분의 공고는 자격 요건을 첨부파일로 넘기기 때문에 API 본문만으로는 ",
         "명시 여부를 모두 확인할 수 없습니다.</p>",
+        "<p>※ <b>경쟁률</b>은 그 기관의 <b>지난 공고</b>에서 확인된 값(지원자수 ÷ 최종선발인원)의 ",
+        "중앙값이며, 이번 공고의 경쟁률이 아닙니다. 직렬마다 크게 다르니 마우스를 올려 ",
+        "표본을 확인하세요. 표본이 아직 없는 기관은 빈칸입니다.</p>",
         "<p>※ <b>신입 초임</b>은 해당 기관이 알리오에 공시한 ",
         str(pay.get("year") or ""), "년 <b>일반정규직 신입사원 초임(합계)</b>이며 ",
         "이번 공고의 급여가 아닙니다. 기관 전체 평균이라 직군·직급에 따라 달라집니다. ",
@@ -877,6 +913,23 @@ def render(rows, cfg, defaults, pay):
     ])
 
 # ---------------------------------------------------------------- main
+
+def loose_gate(cfg):
+    """경쟁률 표본용 필터. 목록 필터보다 느슨하다.
+    기관의 경쟁률 감을 잡는 게 목적이라 신입·경력을 가리지 않는다."""
+    bad = [b for b in cfg.get("제외키워드", []) if b]
+
+    def ok(r):
+        return not any(b in r["title"] or b in r["inst"] for b in bad)
+    return ok
+
+
+def compete_load(cfg, rows, args):
+    targets = sorted({r["inst"] for r, _n in rows})
+    return compete.load(cfg["serviceKey"], loose_gate(cfg),
+                        cfg.get("관심기관", []), targets,
+                        force="--compete" in args)
+
 
 def collect(args=()):
     """API 호출부터 정렬까지. HTML 을 만들 재료를 돌려준다."""
@@ -920,7 +973,8 @@ def build_html(args=()):
     """app.py 가 부르는 진입점. (HTML 문자열, 공고 수) 를 돌려준다."""
     cfg, recs, rows, defaults, _first = collect(args)
     pay = salary.load(force="--salary" in args)
-    html = render(rows, cfg, defaults, pay)
+    comp = compete_load(cfg, rows, args)
+    html = render(rows, cfg, defaults, pay, comp)
     save_seen(recs)
     return html, len(rows)
 
@@ -943,9 +997,10 @@ def main():
 
     cfg, recs, rows, defaults, first_run = collect(args)
     pay = salary.load(force="--salary" in args)
+    comp = compete_load(cfg, rows, args)
 
     with open(OUT, "w", encoding="utf-8") as f:
-        f.write(render(rows, cfg, defaults, pay))
+        f.write(render(rows, cfg, defaults, pay, comp))
     save_seen(recs)
 
     n_new = sum(1 for _r, is_new in rows if is_new)
