@@ -131,7 +131,7 @@ python app.py        서버 모드로 띄우기 (SERVICE_KEY 환경변수 필요
 
 **https://ghgud09080712-lab.github.io/gonggi-scanner/**
 
-깃허브 액션이 **하루 4번(한국시간 06 / 12 / 18 / 24시)** 목록을 새로 만들어
+깃허브 액션이 **매일 한 번(한국시간 06시)** 목록을 새로 만들어
 GitHub Pages 에 올립니다. 서버가 없으니 죽지 않고 비용도 들지 않습니다.
 
 - 지금 바로 갱신하려면 → 저장소 **Actions** 탭 → `채용공고 갱신` → **Run workflow**

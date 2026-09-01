@@ -6,8 +6,8 @@ name: 채용공고 갱신
 
 on:
   schedule:
-    # UTC 기준. 한국시간 06시 / 12시 / 18시 / 24시.
-    - cron: "0 21,3,9,15 * * *"
+    # UTC 기준. 한국시간 매일 06시 한 번.
+    - cron: "0 21 * * *"
   workflow_dispatch:        # 수동 실행 버튼
   push:
     branches: [main]
