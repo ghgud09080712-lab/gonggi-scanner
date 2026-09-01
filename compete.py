@@ -36,10 +36,14 @@ CACHE = os.path.join(HERE, "compete.json")
 BASE = "https://apis.data.go.kr/1051000/recruitment/"
 
 BUDGET = 400          # 한 번 실행에서 쓸 API 호출 수 (일 한도 1,000회)
-MONTHS = 30           # 몇 달 전까지 훑을지
+MONTHS = 18           # 몇 달 전까지 훑을지
+                      # 신입 공채는 연 1~2회고 공고 하나에 직렬이 여러 개라
+                      # 18개월이면 기관당 표본이 충분히 찬다. 그보다 오래된
+                      # 경쟁률은 지금 지원하는 데 쓸모도 적다.
 SKIP_RECENT = 5       # 최근 몇 달은 건너뛸지 — 전형이 끝나야 지원인원이 공시된다
 MAX_PER_INST = 40     # 기관당 보관할 표본 수
-PER_INST_MONTH = 4    # 한 기관에서 한 달에 상세 조회할 공고 수 상한
+PER_INST_MONTH = 2    # 한 기관에서 한 달에 상세 조회할 공고 수 상한
+ENOUGH_PER_INST = 6   # 이만큼 모인 기관은 더 캐지 않는다
 MAX_AGE_DAYS = 0      # 날짜가 바뀌면 이어서 더 모은다 (하루 한 번)
 
 
@@ -75,6 +79,10 @@ def save_cache(d):
         pass
 
 
+class Quota(Exception):
+    """일일 한도 초과. 오늘은 더 못 부른다."""
+
+
 class Budget(object):
     """남은 호출 수를 세는 것뿐이다. 다 쓰면 Stop 을 던진다."""
 
@@ -95,12 +103,23 @@ def _api(key, ep, budget, **kw):
     kw.update({"serviceKey": key, "resultType": "json"})
     url = BASE + ep + "?" + urllib.parse.urlencode(kw)
     req = urllib.request.Request(url, headers={"User-Agent": "gonggi-scanner/1.0"})
-    # 응답이 늦는 일이 잦다. 재시도는 예산을 더 쓰지 않는다.
+    # 응답이 늦는 일이 잦다. 재시도는 호출 한도를 더 쓰지 않는다.
     last = None
     for attempt in range(3):
         try:
             with urllib.request.urlopen(req, timeout=45) as r:
-                return json.loads(r.read().decode("utf-8", "replace"))
+                body = r.read().decode("utf-8", "replace")
+            if "LIMITED_NUMBER_OF_SERVICE_REQUESTS" in body:
+                raise Quota()
+            return json.loads(body)
+        except urllib.error.HTTPError as e:
+            # 429 는 재시도해도 소용없다. 오늘 치를 다 쓴 것이다.
+            if e.code == 429:
+                raise Quota()
+            last = e
+            time.sleep(2 * (attempt + 1))
+        except Quota:
+            raise
         except Exception as e:
             last = e
             time.sleep(2 * (attempt + 1))
@@ -176,8 +195,14 @@ def collect(key, gate, interest, targets, quiet=False):
             return True
         return any(_key(i) and _key(i) in k for i in interest)
 
+    def enough(inst):
+        # 이미 충분히 모인 기관은 더 볼 필요가 없다. 뒤로 갈수록
+        # 상세 조회가 거의 안 생겨 남은 달을 훨씬 싸게 넘길 수 있다.
+        return len(doc["inst"].get(inst) or []) >= ENOUGH_PER_INST
+
     def want(r):
-        return r["inst"] and is_target(r["inst"]) and gate(r)
+        return (r["inst"] and is_target(r["inst"])
+                and not enough(r["inst"]) and gate(r))
 
     try:
         for bgn, end, key_m in _months(MONTHS, SKIP_RECENT):
@@ -223,13 +248,17 @@ def collect(key, gate, interest, targets, quiet=False):
 
             while pend:
                 sn, inst = pend[0]
+                if enough(inst):
+                    pend.pop(0)
+                    continue
                 try:
                     det = _api(key, "detail", budget, sn=sn)["result"]
-                except Budget.Stop:
+                except (Budget.Stop, Quota):
                     raise
                 except Exception:
+                    # 못 읽은 건 seen 에 넣지 않는다. 넣어 버리면 영영
+                    # 다시 안 보게 되어 그 달이 빈 채로 닫힌다.
                     pend.pop(0)
-                    seen.add(sn)
                     continue
                 pend.pop(0)
                 seen.add(sn)
@@ -238,7 +267,12 @@ def collect(key, gate, interest, targets, quiet=False):
                     year = str(det.get("pbancEndYmd") or "")[:4]
                     se = str(det.get("recrutSeNm") or "")
                     bucket = doc["inst"].setdefault(inst, [])
+                    # 같은 표본이 두 번 들어가지 않게 한다. 그래야 이미 훑은
+                    # 달을 다시 훑어도 숫자가 부풀지 않는다.
+                    have = {(b.get("t"), b.get("r"), b.get("a")) for b in bucket}
                     for one in rs:
+                        if (one["t"], one["r"], one["a"]) in have:
+                            continue
                         one["y"] = year
                         one["se"] = se
                         bucket.append(one)
@@ -247,11 +281,21 @@ def collect(key, gate, interest, targets, quiet=False):
 
             doc["pending"].pop(key_m, None)
             doc["done_months"].append(key_m)
+            # 한 달 끝날 때마다 저장한다. 중간에 멈춰도(타임아웃·강제종료)
+            # 그때까지 쓴 API 호출이 헛돌지 않는다.
+            doc["seen"] = sorted(seen)[-20000:]
+            doc["updated"] = dt.date.today().isoformat()
+            save_cache(doc)
             if not quiet:
-                print("  %s 완료 (남은 호출 %d)" % (key_m, budget.left))
+                print("  %s 완료 (남은 호출 %d, 표본 %d건)"
+                      % (key_m, budget.left,
+                         sum(len(v) for v in doc["inst"].values())))
+    except Quota:
+        if not quiet:
+            print("  ! 오늘 API 한도(1,000회)를 다 썼습니다. 내일 이어서 모읍니다")
     except Budget.Stop:
         if not quiet:
-            print("  이번 실행 예산(%d회) 소진 — 다음 실행에 이어서 모읍니다" % BUDGET)
+            print("  이번 실행 호출 한도(%d회) 소진 - 다음 실행에 이어서 모읍니다" % BUDGET)
     except Exception as e:
         if not quiet:
             print("  ! 경쟁률 수집 중단 (%s)" % type(e).__name__)
