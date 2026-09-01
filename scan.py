@@ -453,10 +453,11 @@ border-radius:6px;padding:16px 18px;font-size:12.5px;color:var(--ink3);line-heig
 .pay-x{color:#bdbdbd}
 td.pay{cursor:help}
 
-.rate{display:block;margin-top:3px;font-size:11.5px;color:var(--ink3);cursor:help}
-.rate b{color:var(--pri2);font-weight:700}
-.rate.hot b{color:var(--red)}
-.rate.easy b{color:var(--green)}
+td.rt{cursor:help}
+.rt-n{display:block;font-size:13.5px;font-weight:700;color:var(--pri2)}
+.rt-n.hot{color:var(--red)}
+.rt-n.easy{color:var(--green)}
+.rt-s{display:block;font-size:11.5px;color:var(--ink3);margin-top:1px}
 
 @media(max-width:900px){
 .list col.hide,.list th.hide,.list td.hide{display:none}
@@ -578,16 +579,17 @@ function payCell(rec) {
 
 function rateCell(rec) {
   var c = rec.cmp;
-  if (!c) return '';
-  var cls = c.r >= 30 ? 'rate hot' : (c.r <= 8 ? 'rate easy' : 'rate');
+  if (!c) return '<td class="rt"><span class="pay-x">-</span></td>';
+  var cls = c.r >= 30 ? 'rt-n hot' : (c.r <= 8 ? 'rt-n easy' : 'rt-n');
   var tip = '과거 ' + c.k + ' 공고 ' + c.n + '건의 경쟁률 중앙값 (' +
             c.lo + ':1 ~ ' + c.hi + ':1)';
   c.top.forEach(function (t) {
     tip += '\\n· ' + t.y + ' ' + t.t + ' — ' + t.r + ':1 (지원 ' +
            t.a.toLocaleString('ko-KR') + '명 → ' + t.n + '명)';
   });
-  return '<span class="' + cls + '" title="' + esc(tip) + '">' +
-    '<b>' + c.r + ':1</b> ' + c.k + ' ' + c.n + '건</span>';
+  return '<td class="rt" title="' + esc(tip) + '">' +
+    '<span class="' + cls + '">' + c.r + ':1</span>' +
+    '<span class="rt-s">' + c.k + ' ' + c.n + '건</span></td>';
 }
 
 function row(rec, ev, no) {
@@ -631,8 +633,9 @@ function row(rec, ev, no) {
       (sub.length ? '<span class="sub2">' + sub.join(' · ') + '</span>' : '') +
       (bg.length ? '<div class="badges">' + bg.join('') + '</div>' : '') +
     '</td>' +
-    '<td>' + esc(rec.inst) + rateCell(rec) + '</td>' +
+    '<td>' + esc(rec.inst) + '</td>' +
     payCell(rec) +
+    rateCell(rec) +
     '<td class="hide">' + rgnCell(rec) + '</td>' +
     '<td class="hide">' + (hi ? hover(hi.n > 1 ? hi.txt.split(' 외 ')[0] + ' 외 ' + (hi.n - 1)
                                               : hi.txt, hi.n > 1 ? rec.hire : '') : '-') + '</td>' +
@@ -734,7 +737,7 @@ function run() {
 
   var tb = document.getElementById('tbody');
   if (!rows.length) {
-    tb.innerHTML = '<tr><td colspan="8" class="none">조회된 채용공고가 없습니다.<br>' +
+    tb.innerHTML = '<tr><td colspan="9" class="none">조회된 채용공고가 없습니다.<br>' +
       (picked ? '자격증을 더 고르거나 <b>전체</b> 탭을 눌러보세요.'
               : '위 <b>내 자격증</b>을 펼쳐 보유 자격증을 먼저 선택해 주세요.') + '</td></tr>';
   } else {
@@ -839,9 +842,9 @@ def render(rows, cfg, defaults, pay, comp):
         for i, (f, label) in enumerate(tabs)
     )
 
-    cols = [("번호", "52", ""), ("채용제목", "", ""), ("기관명", "156", ""),
-            ("신입 초임", "104", ""), ("근무지", "94", "hide"),
-            ("고용형태", "104", "hide"), ("마감일", "92", ""), ("상태", "82", "")]
+    cols = [("번호", "48", ""), ("채용제목", "", ""), ("기관명", "146", ""),
+            ("신입 초임", "98", ""), ("경쟁률", "88", ""), ("근무지", "88", "hide"),
+            ("고용형태", "98", "hide"), ("마감일", "88", ""), ("상태", "78", "")]
     colgroup = "".join(
         '<col%s%s>' % (' style="width:%spx"' % w if w else "",
                        ' class="hide"' if c else "")
