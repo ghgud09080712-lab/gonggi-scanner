@@ -107,16 +107,25 @@ def call(key, page, rows=100, ongoing=True):
         p["ongoingYn"] = "Y"
     q = urllib.parse.urlencode(p, safe="")
     req = urllib.request.Request(BASE + "?" + q, headers={"User-Agent": "gonggi-scanner/1.0"})
-    try:
-        with urllib.request.urlopen(req, timeout=30) as r:
-            raw = r.read().decode("utf-8", "replace")
-    except urllib.error.HTTPError as e:
-        # 인증키 오류는 403으로 오는데 본문에 진짜 사유가 들어 있다.
-        raw = e.read().decode("utf-8", "replace") if e.fp else ""
-        if not raw.lstrip().startswith(("{", "[")):
-            die("HTTP %s %s\n     %s" % (e.code, e.reason, raw[:300] or "(응답 본문 없음)"))
-    except urllib.error.URLError as e:
-        die("네트워크에 연결할 수 없습니다: %s" % e.reason)
+    # 이 API 는 가끔 응답이 늦다. 특히 해외(깃허브 러너)에서 부를 때 그렇다.
+    # 한 번 실패했다고 포기하면 그날 목록이 통째로 날아가므로 몇 번 다시 건다.
+    raw = None
+    for attempt in range(4):
+        try:
+            with urllib.request.urlopen(req, timeout=45) as r:
+                raw = r.read().decode("utf-8", "replace")
+            break
+        except urllib.error.HTTPError as e:
+            # 인증키 오류는 403으로 오는데 본문에 진짜 사유가 들어 있다.
+            raw = e.read().decode("utf-8", "replace") if e.fp else ""
+            if not raw.lstrip().startswith(("{", "[")):
+                die("HTTP %s %s\n     %s" % (e.code, e.reason, raw[:300] or "(응답 본문 없음)"))
+            break
+        except urllib.error.URLError as e:
+            if attempt == 3:
+                die("네트워크에 연결할 수 없습니다: %s" % e.reason)
+            print("  응답이 없어 다시 시도합니다 (%d/3)" % (attempt + 1))
+            time.sleep(3 * (attempt + 1))
     try:
         return json.loads(raw)
     except json.JSONDecodeError:
@@ -1043,4 +1052,6 @@ if __name__ == "__main__":
         print("\n중단했습니다.")
     except Exception as e:
         print("\n[오류] %s: %s" % (type(e).__name__, e))
+        if SERVER:
+            sys.exit(1)          # 서버·CI 에서는 입력을 기다리면 안 된다
         input("엔터를 누르면 닫힙니다...")

@@ -95,8 +95,16 @@ def _api(key, ep, budget, **kw):
     kw.update({"serviceKey": key, "resultType": "json"})
     url = BASE + ep + "?" + urllib.parse.urlencode(kw)
     req = urllib.request.Request(url, headers={"User-Agent": "gonggi-scanner/1.0"})
-    with urllib.request.urlopen(req, timeout=30) as r:
-        return json.loads(r.read().decode("utf-8", "replace"))
+    # 응답이 늦는 일이 잦다. 재시도는 예산을 더 쓰지 않는다.
+    last = None
+    for attempt in range(3):
+        try:
+            with urllib.request.urlopen(req, timeout=45) as r:
+                return json.loads(r.read().decode("utf-8", "replace"))
+        except Exception as e:
+            last = e
+            time.sleep(2 * (attempt + 1))
+    raise last
 
 
 def rates(detail):
