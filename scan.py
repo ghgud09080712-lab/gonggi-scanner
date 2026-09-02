@@ -101,6 +101,18 @@ def die(msg):
 # ---------------------------------------------------------------- fetch
 
 def call(key, page, rows=100, ongoing=True):
+    # data.go.kr 은 깃허브 러너에서 자주 타임아웃나고, 그러면 빌드가 통째로
+    # 실패해 그날 페이지가 갱신되지 않는다. 같은 데이터를 주는 알리오 경로를
+    # 먼저 쓰고 거기서 실패할 때만 원래 경로로 되돌아간다.
+    if compete._alio_fail[0] < compete.ALIO_GIVEUP:
+        try:
+            d = compete._alio("list", {"pageNo": page, "numOfRows": rows,
+                                       "ongoingYn": "Y" if ongoing else "A"})
+            compete._alio_fail[0] = 0
+            return d
+        except Exception:
+            compete._alio_fail[0] += 1
+
     p = {"serviceKey": key, "resultType": "json", "numOfRows": rows, "pageNo": page}
     if ongoing:
         # 문서에 없는 파라미터지만 실제로 동작한다.
