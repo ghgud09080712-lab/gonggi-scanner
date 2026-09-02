@@ -473,9 +473,14 @@ td.rt{cursor:help}
 .srs{display:block;margin-top:5px;font-size:11.5px;color:var(--ink3);line-height:1.6}
 .srs b{color:var(--pri2);font-weight:600}
 .atc{margin-top:6px;display:flex;flex-wrap:wrap;gap:4px 10px;font-size:11.5px}
+.atc[hidden]{display:none}
+.atc-b{font:inherit;font-size:11.5px;margin-top:6px;padding:1px 8px;border-radius:3px;
+cursor:pointer;border:1px solid var(--line);background:none;color:var(--ink3)}
+.atc-b:hover{border-color:var(--pri3);color:var(--pri2)}
+.atc-b.on{border-color:var(--pri3);background:var(--tint);color:var(--pri2)}
 .atc a{color:var(--pri2);text-decoration:none;border-bottom:1px solid transparent}
 .atc a:hover{border-bottom-color:var(--pri2)}
-.atc a::before{content:"\\1F4CE";margin-right:3px;opacity:.7}
+.atc a::before,.atc-b::before{content:"\\1F4CE";margin-right:3px;opacity:.7}
 .acb{display:inline-block;font-size:11px;line-height:1.6;padding:0 6px;border-radius:3px;
 background:var(--sf2,#eef0eb);border:1px solid var(--line);color:var(--ink3);margin-right:5px}
 
@@ -695,9 +700,12 @@ function row(rec, ev, no) {
               '<b>직렬</b> ' + sHead + more + '</span>';
   }
 
+  // 첨부는 공고당 서너 개씩이라 다 펼쳐 두면 제목이 묻힌다. 버튼만 세우고
+  // 누를 때 펼친다.
   var atc = '';
   if (rec.files && rec.files.length) {
-    atc = '<div class="atc">' + rec.files.map(function (f) {
+    atc = '<button type="button" class="atc-b">첨부 ' + rec.files.length + '</button>' +
+          '<div class="atc" hidden>' + rec.files.map(function (f) {
       return '<a href="' + esc(f.u) + '" target="_blank" rel="noopener">' +
              esc(f.n) + '</a>';
     }).join('') + '</div>';
@@ -841,6 +849,13 @@ document.querySelectorAll('.tabs button').forEach(function (b) {
 });
 // 표를 다시 그릴 때마다 핸들러를 달면 중복되므로 tbody 한 곳에만 건다.
 document.getElementById('tbody').addEventListener('click', function (e) {
+  var f = e.target.closest ? e.target.closest('.atc-b') : null;
+  if (f) {
+    var box = f.nextElementSibling;
+    box.hidden = !box.hidden;
+    f.classList.toggle('on');
+    return;
+  }
   var b = e.target.closest ? e.target.closest('.ap-b') : null;
   if (!b) return;
   var sn = b.dataset.sn;
