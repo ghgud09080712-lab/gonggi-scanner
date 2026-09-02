@@ -12,6 +12,7 @@ on:
   push:
     branches: [main]
     paths: ["scan.py", "salary.py", "certs.py", "compete.py", "detail.py",
+            "kosha_panel.py", "kosha_calc.json",
             "config.sample.json", ".github/workflows/build.yml"]
 
 permissions:
