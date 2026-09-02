@@ -11,7 +11,8 @@ on:
   workflow_dispatch:        # 수동 실행 버튼
   push:
     branches: [main]
-    paths: ["scan.py", "salary.py", "certs.py", "compete.py", "config.sample.json"]
+    paths: ["scan.py", "salary.py", "certs.py", "compete.py", "detail.py",
+            "config.sample.json", ".github/workflows/build.yml"]
 
 permissions:
   contents: write           # compete.json 을 저장소에 누적 커밋한다
