@@ -52,7 +52,19 @@ jobs:
           SERVICE_KEY: ${{ secrets.SERVICE_KEY }}
           GONGGI_SERVER: "1"
         run: |
-          python scan.py
+          # 러너에서 한국 쪽(apis.data.go.kr / opendata.alio.go.kr)으로 가는 길이
+          # 간헐적으로 막혀 통째로 timed out 이 난다. 코드 안의 재시도로는
+          # 못 넘기는 몇 분짜리 먹통이라, 아예 텀을 두고 다시 돌린다.
+          ok=0
+          for i in 1 2 3; do
+            if python scan.py; then ok=1; break; fi
+            echo "::warning::목록 생성 실패 ($i/3)"
+            if [ $i -lt 3 ]; then sleep 90; fi
+          done
+          if [ "$ok" != "1" ]; then
+            echo "::error::세 번 다 실패했습니다 — 한국 쪽 API 에 못 닿는 상태입니다"
+            exit 1
+          fi
           mkdir -p _site
           cp "채용공고.html" _site/index.html
 
