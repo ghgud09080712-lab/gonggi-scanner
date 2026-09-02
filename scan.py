@@ -110,8 +110,8 @@ def call(key, page, rows=100, ongoing=True):
                                        "ongoingYn": "Y" if ongoing else "A"})
             compete._alio_fail[0] = 0
             return d
-        except Exception:
-            compete._alio_fail[0] += 1
+        except Exception as e:
+            compete._alio_note(e)
 
     p = {"serviceKey": key, "resultType": "json", "numOfRows": rows, "pageNo": page}
     if ongoing:

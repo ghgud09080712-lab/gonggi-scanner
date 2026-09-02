@@ -116,6 +116,16 @@ class Budget(object):
 
 
 _alio_fail = [0]
+_alio_why = [None]
+
+
+def _alio_note(e):
+    """알리오 경로가 왜 죽었는지 한 번만 알려 준다.
+    조용히 data.go.kr 로 넘어가면 러너에서 무슨 일이 났는지 알 길이 없다."""
+    _alio_fail[0] += 1
+    if _alio_why[0] is None:
+        _alio_why[0] = "%s: %s" % (type(e).__name__, e)
+        print("  알리오 경로 실패 → data.go.kr 로 갑니다 (%s)" % _alio_why[0][:120])
 
 
 def _alio(ep, kw):
@@ -143,8 +153,8 @@ def _api(key, ep, budget, **kw):
             out = _alio(ep, dict(kw, ongoingYn="A"))
             _alio_fail[0] = 0
             return out
-        except Exception:
-            _alio_fail[0] += 1
+        except Exception as e:
+            _alio_note(e)
 
     budget.spend()
     kw.update({"serviceKey": key, "resultType": "json"})
