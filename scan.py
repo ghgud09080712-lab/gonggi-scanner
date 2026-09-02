@@ -418,6 +418,9 @@ vertical-align:middle;background:#fff}
 .list tbody tr:nth-child(odd) td{background:var(--zebra)}
 .list tbody tr:hover td{background:var(--tint)}
 .list td.t{text-align:left}
+/* 기관명은 띄어쓰기가 없어 저절로 줄바꿈이 안 된다. 칸을 넘겨 옆 칸을
+   침범하지 않도록 글자 단위로 줄을 바꾸게 한다. */
+.list td.inst{overflow-wrap:anywhere;word-break:break-word;line-height:1.45}
 .tl{font-size:14px;font-weight:500;color:#2b2b2b;line-height:1.5;
 text-decoration:none;display:inline-block}
 .tl:hover{color:var(--pri2);text-decoration:underline}
@@ -711,7 +714,7 @@ function row(rec, ev, no) {
       srsLine + atc +
       (bg.length ? '<div class="badges">' + bg.join('') + '</div>' : '') +
     '</td>' +
-    '<td>' + esc(rec.inst) + '</td>' +
+    '<td class="inst">' + esc(rec.inst) + '</td>' +
     payCell(rec) +
     rateCell(rec) +
     '<td class="hide">' + rgnCell(rec) + '</td>' +
@@ -940,7 +943,7 @@ def render(rows, cfg, defaults, pay, comp, dets):
         for i, (f, label) in enumerate(tabs)
     )
 
-    cols = [("번호", "48", ""), ("채용제목", "", ""), ("기관명", "146", ""),
+    cols = [("번호", "48", ""), ("채용제목", "", ""), ("기관명", "182", ""),
             ("신입 초임", "98", ""), ("경쟁률", "88", ""), ("근무지", "88", "hide"),
             ("고용형태", "98", "hide"), ("마감일", "88", ""), ("내 상태", "92", "")]
     colgroup = "".join(
