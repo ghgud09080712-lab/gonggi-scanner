@@ -28,6 +28,7 @@ import salary
 import compete
 import detail
 import kosha_panel
+import kepco_panel
 
 try:
     sys.stdout.reconfigure(encoding="utf-8")
@@ -946,6 +947,8 @@ def render(rows, cfg, defaults, pay, comp, dets):
     payload += "var PAYYEAR=%d;\n" % (pay.get("year") or 0)
     kcalc = kosha_panel.load()
     payload += "var KOSHA=%s;\n" % json.dumps(kcalc, ensure_ascii=False)
+    xcalc = kepco_panel.load()
+    payload += "var KEPCO=%s;\n" % json.dumps(xcalc, ensure_ascii=False)
 
     # '전체'가 첫 탭이자 기본 화면이다. 자격증으로 좁힌 화면만 먼저 보이면
     # 경쟁률·초임처럼 다른 공고에 붙은 정보가 통째로 안 보인다.
@@ -979,7 +982,7 @@ def render(rows, cfg, defaults, pay, comp, dets):
         '<!doctype html><html lang="ko"><head><meta charset="utf-8">',
         '<meta name="viewport" content="width=device-width,initial-scale=1">',
         "<title>공공기관 채용정보 ", now, "</title>",
-        "<style>", CSS, kosha_panel.CSS, "</style></head><body>",
+        "<style>", CSS, kosha_panel.CSS, kepco_panel.CSS, "</style></head><body>",
 
         '<div class="gov"><div class="in">',
         "잡알리오 오픈API로 만든 개인용 채용공고 목록입니다",
@@ -988,7 +991,9 @@ def render(rows, cfg, defaults, pay, comp, dets):
         '<span class="logo">채용공고<span>공공기관 채용정보 스캐너</span></span>',
         '<span class="when">', now, " 기준</span>",
         ('<button class="kbtn" id="kbtn" type="button" aria-expanded="false">'
-         '계산기 <b id="kbtnv"></b></button>') if kcalc else "",
+         'KOSHA <b id="kbtnv"></b></button>') if kcalc else "",
+        ('<button class="kbtn" id="xbtn" type="button" aria-expanded="false">'
+         '한전 <b id="xbtnv"></b></button>') if xcalc else "",
         "</div></div>",
 
         '<div class="wrap">',
@@ -1014,6 +1019,14 @@ def render(rows, cfg, defaults, pay, comp, dets):
          '<span class="kbar"><i id="kbari"></i></span>'
          '<span class="pmore">접기 ▲</span></summary>'
          + kosha_panel.panel(kcalc) + "</details>") if kcalc else "",
+
+        # ---- 한전 1차(서류)전형 계산기. 같은 방식으로 데이터가 없으면 생략한다 ----
+        ('<details class="srch" id="xpanel"><summary class="srch-hd">'
+         '<span class="st">한전 1차전형</span>'
+         '<span class="psum" id="xsum"></span>'
+         '<span class="xbar"><i id="xbari"></i></span>'
+         '<span class="pmore">접기 ▲</span></summary>'
+         + kepco_panel.panel(xcalc) + "</details>") if xcalc else "",
 
         '<div class="tabs">', tab_html, "</div>",
 
@@ -1055,7 +1068,8 @@ def render(rows, cfg, defaults, pay, comp, dets):
         "지방공기업은 클린아이 잡플러스 소관으로 이 목록에 포함되지 않습니다.</p>",
         "</div>",
 
-        "</div><script>", payload, APP, kosha_panel.APP, "</script></body></html>",
+        "</div><script>", payload, APP, kosha_panel.APP, kepco_panel.APP,
+        "</script></body></html>",
     ])
 
 # ---------------------------------------------------------------- main
