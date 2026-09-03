@@ -29,6 +29,7 @@ import compete
 import detail
 import kosha_panel
 import kepco_panel
+import kogas_panel
 
 try:
     sys.stdout.reconfigure(encoding="utf-8")
@@ -949,6 +950,8 @@ def render(rows, cfg, defaults, pay, comp, dets):
     payload += "var KOSHA=%s;\n" % json.dumps(kcalc, ensure_ascii=False)
     xcalc = kepco_panel.load()
     payload += "var KEPCO=%s;\n" % json.dumps(xcalc, ensure_ascii=False)
+    gcalc = kogas_panel.load()
+    payload += "var KOGAS=%s;\n" % json.dumps(gcalc, ensure_ascii=False)
 
     # '전체'가 첫 탭이자 기본 화면이다. 자격증으로 좁힌 화면만 먼저 보이면
     # 경쟁률·초임처럼 다른 공고에 붙은 정보가 통째로 안 보인다.
@@ -982,7 +985,8 @@ def render(rows, cfg, defaults, pay, comp, dets):
         '<!doctype html><html lang="ko"><head><meta charset="utf-8">',
         '<meta name="viewport" content="width=device-width,initial-scale=1">',
         "<title>공공기관 채용정보 ", now, "</title>",
-        "<style>", CSS, kosha_panel.CSS, kepco_panel.CSS, "</style></head><body>",
+        "<style>", CSS, kosha_panel.CSS, kepco_panel.CSS, kogas_panel.CSS,
+        "</style></head><body>",
 
         '<div class="gov"><div class="in">',
         "잡알리오 오픈API로 만든 개인용 채용공고 목록입니다",
@@ -994,6 +998,8 @@ def render(rows, cfg, defaults, pay, comp, dets):
          'KOSHA <b id="kbtnv"></b></button>') if kcalc else "",
         ('<button class="kbtn" id="xbtn" type="button" aria-expanded="false">'
          '한전 <b id="xbtnv"></b></button>') if xcalc else "",
+        ('<button class="kbtn" id="gbtn" type="button" aria-expanded="false">'
+         '가스공사 <b id="gbtnv"></b></button>') if gcalc else "",
         "</div></div>",
 
         '<div class="wrap">',
@@ -1027,6 +1033,14 @@ def render(rows, cfg, defaults, pay, comp, dets):
          '<span class="xbar"><i id="xbari"></i></span>'
          '<span class="pmore">접기 ▲</span></summary>'
          + kepco_panel.panel(xcalc) + "</details>") if xcalc else "",
+
+        # ---- 가스공사 서류전형 계산기 ----
+        ('<details class="srch" id="gpanel"><summary class="srch-hd">'
+         '<span class="st">가스공사 서류전형</span>'
+         '<span class="psum" id="gsum"></span>'
+         '<span class="gbar"><i id="gbari"></i></span>'
+         '<span class="pmore">접기 ▲</span></summary>'
+         + kogas_panel.panel(gcalc) + "</details>") if gcalc else "",
 
         '<div class="tabs">', tab_html, "</div>",
 
@@ -1069,7 +1083,7 @@ def render(rows, cfg, defaults, pay, comp, dets):
         "</div>",
 
         "</div><script>", payload, APP, kosha_panel.APP, kepco_panel.APP,
-        "</script></body></html>",
+        kogas_panel.APP, "</script></body></html>",
     ])
 
 # ---------------------------------------------------------------- main
