@@ -15,6 +15,7 @@ on:
             "kosha_panel.py", "kosha_calc.json",
             "kepco_panel.py", "kepco_calc.json",
             "kogas_panel.py", "kogas_calc.json",
+            "extra_panel.py", "extra_calc.json", "calc_menu.py",
             "config.sample.json", ".github/workflows/build.yml"]
 
 permissions:

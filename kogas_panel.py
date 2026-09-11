@@ -387,38 +387,7 @@ APP = """
     drawCom(); drawJob(); paintG();
   });
 
-  /* 계산기는 접어 두고 상단 머리띠의 '가스공사' 버튼으로 연다.
-     브라우저가 details 의 열림 상태를 세션에 기억했다가 load 이후에 되살리기 때문에
-     사용자가 직접 누르기 전까지는 몇 번이고 닫는다. */
-  var box = document.getElementById('gpanel');
-  var btn = document.getElementById('gbtn');
-  var others = ['kpanel', 'xpanel'].map(function (id) { return document.getElementById(id); });
-  if (btn && box) {
-    var touched = false;
-    function forceClosed() { if (!touched) box.open = false; }
-    forceClosed();
-    setTimeout(forceClosed, 0);
-    window.addEventListener('load', forceClosed);
-    window.addEventListener('pageshow', forceClosed);
-
-    btn.addEventListener('click', function () {
-      touched = true;
-      box.open = !box.open;
-      if (box.open) {
-        others.forEach(function (o) { if (o) o.open = false; });
-        box.scrollIntoView({ block: 'start', behavior: 'smooth' });
-      }
-    });
-    box.addEventListener('toggle', function () {
-      btn.setAttribute('aria-expanded', box.open ? 'true' : 'false');
-      btn.classList.toggle('on', box.open);
-    });
-    /* 계산기를 동시에 펼치면 목록이 화면 밖으로 밀린다. 한 번에 하나만. */
-    ['kbtn', 'xbtn'].forEach(function (id) {
-      var b = document.getElementById(id);
-      if (b) b.addEventListener('click', function () { touched = true; box.open = false; });
-    });
-  }
+  /* 패널 열고 닫기는 머리띠의 계산기 메뉴(calc_menu.py)가 맡는다 */
 
   drawCom();
   drawJob();

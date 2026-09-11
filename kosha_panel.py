@@ -39,18 +39,8 @@ color:var(--ink2);cursor:pointer;white-space:nowrap;line-height:1.9}
 .kc:focus-visible{outline:2px solid var(--pri);outline-offset:2px}
 .kc.have{color:var(--pri2);font-weight:700}
 .kc.have::before{content:"■";color:var(--pri)}
-/* 닫혀 있을 때는 막대조차 남기지 않는다. 상단 버튼이 유일한 입구다. */
+/* 닫혀 있을 때는 막대조차 남기지 않는다. 머리띠의 계산기 메뉴가 유일한 입구다. */
 #kpanel:not([open]){display:none}
-
-/* 상단 머리띠의 작은 여는 버튼 */
-.kbtn{font:inherit;font-size:12px;line-height:1;padding:6px 11px;cursor:pointer;
-margin-left:12px;border:1px solid var(--pri3);border-radius:24px;
-background:#fff;color:var(--pri2);white-space:nowrap}
-.kbtn:hover{background:var(--tint)}
-.kbtn:focus-visible{outline:2px solid var(--pri);outline-offset:2px}
-.kbtn.on{background:var(--pri);border-color:var(--pri);color:#fff}
-.kbtn b{font-weight:700;margin-left:5px}
-.kbtn.on b{color:#fff}
 .ktot{display:flex;align-items:center;gap:10px;font-size:13px;color:var(--ink2)}
 .ktot b{font-size:15px;color:var(--pri2)}
 .kbar{flex:1;min-width:90px;max-width:200px;height:6px;background:var(--line2);
@@ -312,31 +302,7 @@ APP = """
     drawJob(); paintK();
   });
 
-  /* 계산기는 접어 두고, 상단 머리띠의 작은 '계산기' 버튼으로 연다.
-     매일 보는 건 공고 목록이지 계산기가 아니라서 자리를 차지하면 안 된다. */
-  var box = document.getElementById('kpanel');
-  var btn = document.getElementById('kbtn');
-  if (btn && box) {
-    /* 브라우저는 details 의 열림 상태를 세션에 기억했다가 되살린다. 그 복원이
-       이 스크립트보다 늦게(load 이후) 돌아서, 한 번만 닫아 놓으면 도로 열린다.
-       그래서 사용자가 직접 누르기 전까지는 몇 번이고 닫는다. */
-    var touched = false;
-    function forceClosed() { if (!touched) box.open = false; }
-    forceClosed();
-    setTimeout(forceClosed, 0);
-    window.addEventListener('load', forceClosed);
-    window.addEventListener('pageshow', forceClosed);
-
-    btn.addEventListener('click', function () {
-      touched = true;
-      box.open = !box.open;
-      if (box.open) box.scrollIntoView({ block: 'start', behavior: 'smooth' });
-    });
-    box.addEventListener('toggle', function () {
-      btn.setAttribute('aria-expanded', box.open ? 'true' : 'false');
-      btn.classList.toggle('on', box.open);
-    });
-  }
+  /* 패널 열고 닫기는 머리띠의 계산기 메뉴(calc_menu.py)가 맡는다 */
 
   drawJob();
   paintK();

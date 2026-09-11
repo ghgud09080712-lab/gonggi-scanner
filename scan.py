@@ -29,6 +29,8 @@ import compete
 import detail
 import kosha_panel
 import kepco_panel
+import extra_panel
+import calc_menu
 import kogas_panel
 
 try:
@@ -952,6 +954,23 @@ def render(rows, cfg, defaults, pay, comp, dets):
     payload += "var KEPCO=%s;\n" % json.dumps(xcalc, ensure_ascii=False)
     gcalc = kogas_panel.load()
     payload += "var KOGAS=%s;\n" % json.dumps(gcalc, ensure_ascii=False)
+    qcalcs = extra_panel.load()
+    payload += "var QCALC=%s;\n" % json.dumps(qcalcs, ensure_ascii=False)
+
+    # 머리띠 '계산기 ▾' 목록에 들어갈 줄. 패널 데이터가 없으면 그 줄도 뺀다.
+    menu = []
+    if kcalc:
+        menu.append(dict(panel="kpanel", val="kbtnv", short="KOSHA", name="한국산업안전보건공단",
+                         desc="5급 · 서류 정량평가 100", deadline="2026-08-24"))
+    if xcalc:
+        menu.append(dict(panel="xpanel", val="xbtnv", short="한전", name="한국전력공사",
+                         desc="4직급 · 외국어 100 + 가점 40", deadline=xcalc.get("deadline")))
+    if gcalc:
+        menu.append(dict(panel="gpanel", val="gbtnv", short="가스공사", name="한국가스공사",
+                         desc="6급 · 외국어 + 자격증 100", deadline=gcalc.get("deadline")))
+    for c in qcalcs:
+        menu.append(dict(panel="qp-" + c["id"], val="qv-" + c["id"], short=c["short"],
+                         name=c["name"], desc=c["desc"], deadline=c.get("deadline")))
 
     # '전체'가 첫 탭이자 기본 화면이다. 자격증으로 좁힌 화면만 먼저 보이면
     # 경쟁률·초임처럼 다른 공고에 붙은 정보가 통째로 안 보인다.
@@ -986,6 +1005,7 @@ def render(rows, cfg, defaults, pay, comp, dets):
         '<meta name="viewport" content="width=device-width,initial-scale=1">',
         "<title>공공기관 채용정보 ", now, "</title>",
         "<style>", CSS, kosha_panel.CSS, kepco_panel.CSS, kogas_panel.CSS,
+        extra_panel.CSS, calc_menu.CSS,
         "</style></head><body>",
 
         '<div class="gov"><div class="in">',
@@ -994,12 +1014,7 @@ def render(rows, cfg, defaults, pay, comp, dets):
         '<div class="hd"><div class="in">',
         '<span class="logo">채용공고<span>공공기관 채용정보 스캐너</span></span>',
         '<span class="when">', now, " 기준</span>",
-        ('<button class="kbtn" id="kbtn" type="button" aria-expanded="false">'
-         'KOSHA <b id="kbtnv"></b></button>') if kcalc else "",
-        ('<button class="kbtn" id="xbtn" type="button" aria-expanded="false">'
-         '한전 <b id="xbtnv"></b></button>') if xcalc else "",
-        ('<button class="kbtn" id="gbtn" type="button" aria-expanded="false">'
-         '가스공사 <b id="gbtnv"></b></button>') if gcalc else "",
+        calc_menu.html_(menu, now_kst().strftime("%Y-%m-%d")),
         "</div></div>",
 
         '<div class="wrap">',
@@ -1042,6 +1057,9 @@ def render(rows, cfg, defaults, pay, comp, dets):
          '<span class="pmore">접기 ▲</span></summary>'
          + kogas_panel.panel(gcalc) + "</details>") if gcalc else "",
 
+        # ---- 공통 틀 계산기(가스안전·남부발전·한전기술 …). extra_calc.json 에 있는 만큼 ----
+        extra_panel.panels(qcalcs),
+
         '<div class="tabs">', tab_html, "</div>",
 
         '<div class="rhd"><h2>채용정보 <b id="rcount">0</b>건</h2><div class="r">',
@@ -1083,7 +1101,7 @@ def render(rows, cfg, defaults, pay, comp, dets):
         "</div>",
 
         "</div><script>", payload, APP, kosha_panel.APP, kepco_panel.APP,
-        kogas_panel.APP, "</script></body></html>",
+        kogas_panel.APP, extra_panel.APP, calc_menu.APP, "</script></body></html>",
     ])
 
 # ---------------------------------------------------------------- main
